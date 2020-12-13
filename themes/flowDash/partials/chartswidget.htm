@@ -1,0 +1,289 @@
+[viewBag]
+==
+<?php
+    function onStart(){
+        $data = post();
+
+        if(isset($data['start']) && isset($data['end'])){
+
+            $start   =   \Carbon\Carbon::parse(\Carbon\Carbon::createFromFormat($this['settings']['dateformat'], $data['start']));
+            $end     =   \Carbon\Carbon::parse(\Carbon\Carbon::createFromFormat($this['settings']['dateformat'], $data['end']));
+
+
+            $start          = $start->copy()->startOfDay();
+            $end            = $end->copy()->endOfDay();
+
+            $this['PendingPayments']        =   Currency::format( str_replace('-','',\Spot\Shipment\Models\Payment::whereIn('status',[1,3])->whereIn('payment_type',['courier_fee','return_package_fee'])->where('date', '>=', $start)->where('date', '<=', $end)->where(function($q){
+                if(Auth::getUser()->role_id == 6){
+                    $q->where(function($q){
+                        $q->where('type', 2);
+                        $q->whereIn('for_id', Auth::getUser()->manage->pluck('id')->toArray());
+                    });
+                    $q->whereHas('order', function($q){
+                        $q->whereIn('office_id', Auth::getUser()->manage->pluck('id')->toArray());
+                    });
+                }
+            })->sum('amount')) );
+
+
+            $this['CurrentMonthSales']      =   Currency::format(str_replace('-','',\Spot\Shipment\Models\Payment::where('status',5)->whereIn('payment_type',['courier_fee','return_package_fee'])->where('date', '>=', $start)->where('date', '<=', $end)->where(function($q){
+                if(Auth::getUser()->role_id == 6){
+                    $q->where(function($q){
+                        $q->where('type', 2);
+                        $q->whereIn('for_id', Auth::getUser()->manage->pluck('id')->toArray());
+                    });
+                    $q->whereHas('order', function($q){
+                        $q->whereIn('office_id', Auth::getUser()->manage->pluck('id')->toArray());
+                    });
+                }
+            })->sum('amount')));
+
+
+            $shipments                     =   \Spot\Shipment\Models\Order::where('created_at', '>=', $start)->where('created_at', '<=', $end)->where(function($q){
+                if(Auth::getUser()->role_id == 6){
+                    $q->whereIn('office_id', Auth::getUser()->manage->pluck('id')->toArray());
+                }
+            })->count();
+            $delayed                        =   \Spot\Shipment\Models\Order::whereIn('requested', [0,1,3])
+                                                    ->where('delivery_date', '<', \Carbon\Carbon::now()->format('Y-m-d'))
+                                                    ->where('created_at', '>=', $start)->where('created_at', '<=', $end)->where(function($q){
+                                                        if(Auth::getUser()->role_id == 6){
+                                                            $q->whereIn('office_id', Auth::getUser()->manage->pluck('id')->toArray());
+                                                        }
+                                                    })->count();
+            if($shipments != 0){
+                $this['shipping']               =  ceil($delayed/$shipments*100);
+            }else{
+                $this['shipping']               =  0;
+            }
+
+            $time_diff                  = $start->diffInDays($end, false);
+            $PendingPaymentsChart       =   '';
+            $CurrentMonthSalesChart     =   '';
+            $shippingChart              =   '';
+            for($x=0;$x<=$time_diff;$x++){
+                $start_date          = $start->addDays($x)->copy()->startOfDay();
+                $end_date            = $start->addDays($x)->copy()->endOfDay();
+
+                $PendingPaymentsChart       .=   str_replace('-','',\Spot\Shipment\Models\Payment::whereIn('status',[1,3])->whereIn('payment_type',['courier_fee','return_package_fee'])->where('date', '>=', $start_date)->where('date', '<=', $end_date)->where(function($q){
+                    if(Auth::getUser()->role_id == 6){
+                        $q->where(function($q){
+                            $q->where('type', 2);
+                            $q->whereIn('for_id', Auth::getUser()->manage->pluck('id')->toArray());
+                        });
+                        $q->orWhere(function($q){
+                            $q->whereHas('order', function($q){
+                                $q->whereIn('office_id', Auth::getUser()->manage->pluck('id')->toArray());
+                            });
+                        });
+                        $q->orWhere(function($q){
+                            $q->whereHas('treasury', function($q){
+                                $q->whereIn('office_id', Auth::getUser()->manage->pluck('id')->toArray());
+                            });
+                        });
+                    }
+                })->sum('amount')).',';
+                $CurrentMonthSalesChart     .=   str_replace('-','',\Spot\Shipment\Models\Payment::where('status',5)->whereIn('payment_type',['courier_fee','return_package_fee'])->where('date', '>=', $start_date)->where('date', '<=', $end_date)->where(function($q){
+                    if(Auth::getUser()->role_id == 6){
+                        $q->where(function($q){
+                            $q->where('type', 2);
+                            $q->whereIn('for_id', Auth::getUser()->manage->pluck('id')->toArray());
+                        });
+                        $q->orWhere(function($q){
+                            $q->whereHas('order', function($q){
+                                $q->whereIn('office_id', Auth::getUser()->manage->pluck('id')->toArray());
+                            });
+                        });
+                        $q->orWhere(function($q){
+                            $q->whereHas('treasury', function($q){
+                                $q->whereIn('office_id', Auth::getUser()->manage->pluck('id')->toArray());
+                            });
+                        });
+                    }
+                })->sum('amount')).',';
+                $shipments                     =   \Spot\Shipment\Models\Order::where('created_at', '>=', $start_date)->where('created_at', '<=', $end_date)->where(function($q){
+                    if(Auth::getUser()->role_id == 6){
+                        $q->whereIn('office_id', Auth::getUser()->manage->pluck('id')->toArray());
+                    }
+                })->count();
+                $delayed                        =   \Spot\Shipment\Models\Order::whereIn('requested', [0,1,3])->where('delivery_date', '>',\Carbon\Carbon::now())->where('created_at', '>=', $start_date)->where('created_at', '<=', $end_date)->where(function($q){
+                    if(Auth::getUser()->role_id == 6){
+                        $q->whereIn('office_id', Auth::getUser()->manage->pluck('id')->toArray());
+                    }
+                })->count();
+                if($shipments != 0){
+                    $shippingChart          .=  ($delayed/$shipments*100).',';
+                }else{
+                    $shippingChart          .=  (0).',';
+                }
+
+            }
+            $this['PendingPaymentsChart']       =   $PendingPaymentsChart;
+            $this['CurrentMonthSalesChart']     =   $CurrentMonthSalesChart;
+            $this['shippingChart']              =   $shippingChart;
+
+        }else{
+            $this['PendingPayments']    =   Currency::format( str_replace('-','',\Spot\Shipment\Models\Payment::where('status',1)->where('payment_type','courier_fee')->where(function($q){
+                if(Auth::getUser()->role_id == 6){
+                    $q->where(function($q){
+                        $q->where('type', 2);
+                        $q->whereIn('for_id', Auth::getUser()->manage->pluck('id')->toArray());
+                    });
+                    $q->orWhere(function($q){
+                        $q->whereHas('order', function($q){
+                            $q->whereIn('office_id', Auth::getUser()->manage->pluck('id')->toArray());
+                        });
+                    });
+                    $q->orWhere(function($q){
+                        $q->whereHas('treasury', function($q){
+                            $q->whereIn('office_id', Auth::getUser()->manage->pluck('id')->toArray());
+                        });
+                    });
+                }
+            })->sum('amount')) );
+            $this['CurrentMonthSales']      =   Currency::format(str_replace('-','',\Spot\Shipment\Models\Payment::where('status',3)->where('payment_type','courier_fee')->where(function($q){
+                if(Auth::getUser()->role_id == 6){
+                    $q->where(function($q){
+                        $q->where('type', 2);
+                        $q->whereIn('for_id', Auth::getUser()->manage->pluck('id')->toArray());
+                    });
+                    $q->orWhere(function($q){
+                        $q->whereHas('order', function($q){
+                            $q->whereIn('office_id', Auth::getUser()->manage->pluck('id')->toArray());
+                        });
+                    });
+                    $q->orWhere(function($q){
+                        $q->whereHas('treasury', function($q){
+                            $q->whereIn('office_id', Auth::getUser()->manage->pluck('id')->toArray());
+                        });
+                    });
+                }
+            })->sum('amount')));
+            $shipments                     =   \Spot\Shipment\Models\Order::where(function($q){
+                                                    if(Auth::getUser()->role_id == 6){
+                                                        $q->whereIn('office_id', Auth::getUser()->manage->pluck('id')->toArray());
+                                                    }
+                                                })->count();
+            $delayed                        =   \Spot\Shipment\Models\Order::whereIn('requested', [0,1,3])
+                                                    ->where('delivery_date', '<',\Carbon\Carbon::now())
+                                                    ->where(function($q){
+                                                        if(Auth::getUser()->role_id == 6){
+                                                            $q->whereIn('office_id', Auth::getUser()->manage->pluck('id')->toArray());
+                                                        }
+                                                    })->count();
+            if($shipments != 0){
+                $this['shipping']               =  ceil($delayed/$shipments*100);
+            }else{
+                $this['shipping']               =  0;
+            }
+
+        }
+    }
+?>
+==
+
+
+<div class="card-header card-header-tabs-basic nav" role="tablist">
+    <a href="#{{'Pending Payments'|__}}" class="active" data-toggle="tab" role="tab" aria-controls="{{'Pending Payments'|__}}" aria-selected="true">{{'Pending Payments'|__}}</a>
+    <a href="#{{'Current Month Sales'|__}}" data-toggle="tab" role="tab" aria-controls="{{'Current Month Sales'|__}}" aria-selected="false">{{'Current Month Sales'|__}}</a>
+    <a href="#{{'Delayed Shipping Percentage'|__}}" data-toggle="tab" role="tab" aria-controls="{{'Delayed Shipping Percentage'|__}}" aria-selected="false">{{'Delayed Shipping Percentage'|__}}</a>
+    
+</div>
+
+<div class="list-group tab-content list-group-flush">
+
+    <div class="tab-pane active show fade" id="{{'Pending Payments'|__}}">
+        <div class="list-group-item list-group-item-action d-flex align-items-center ">
+            <!-- <div class="avatar avatar-xs mr-3">
+                <span class="avatar-title rounded-circle  bg-purple">
+                    <i class="material-icons">monetization_on</i>
+                </span>
+            </div> -->
+            <div class="flex">
+                <div class="d-flex align-items-middle">
+                    <!-- <div class="avatar avatar-xxs mr-1">
+                        <img src="assets/images/256_rsz_1andy-lee-642320-unsplash.jpg" alt="Avatar" class="avatar-img rounded-circle">
+                    </div> -->
+                    <canvas id="kt_chart_quick_stats_1"></canvas>
+
+                    <strong class="text-15pt mr-1">{{PendingPayments}}</strong>
+                </div>
+                <small class="text-muted">{{'Pending Payments'|__}}</small>
+            </div>
+            <!-- <div>$573</div>
+            <i class="material-icons icon-muted ml-3">arrow_forward</i> -->
+        </div>
+    </div>
+
+    <div class="tab-pane" id="{{'Current Month Sales'|__}}">
+        <div class="list-group-item list-group-item-action d-flex align-items-center ">
+            <!-- <div class="avatar avatar-xs mr-3">
+                <span class="avatar-title rounded-circle  bg-purple">
+                    <i class="material-icons">monetization_on</i>
+                </span>
+            </div> -->
+            <div class="flex">
+                <div class="d-flex align-items-middle">
+                    <!-- <div class="avatar avatar-xxs mr-1">
+                        <img src="assets/images/256_rsz_1andy-lee-642320-unsplash.jpg" alt="Avatar" class="avatar-img rounded-circle">
+                    </div> -->
+                    <canvas id="kt_chart_quick_stats_2"></canvas>
+
+                    <strong class="text-15pt mr-1">{{CurrentMonthSales}}</strong>
+                </div>
+                <small class="text-muted">{{'Current Month Sales'|__}}</small>
+            </div>
+            <!-- <div>$573</div>
+            <i class="material-icons icon-muted ml-3">arrow_forward</i> -->
+        </div>
+    </div>
+
+    <div class="tab-pane" id="{{'Delayed Shipping Percentage'|__}}">
+        <div class="list-group-item list-group-item-action d-flex align-items-center ">
+            <!-- <div class="avatar avatar-xs mr-3">
+                <span class="avatar-title rounded-circle  bg-purple">
+                    <i class="material-icons">monetization_on</i>
+                </span>
+            </div> -->
+            <div class="flex">
+                <div class="d-flex align-items-middle">
+                    <!-- <div class="avatar avatar-xxs mr-1">
+                        <img src="assets/images/256_rsz_1andy-lee-642320-unsplash.jpg" alt="Avatar" class="avatar-img rounded-circle">
+                    </div> -->
+                    <canvas id="kt_chart_quick_stats_3"></canvas>
+
+                    <strong class="text-15pt mr-1">{{shipping}}% </strong>
+                </div>
+                <small class="text-muted">{{'Delayed Shipping Percentage'|__}}</small>
+            </div>
+            <!-- <div>$573</div>
+            <i class="material-icons icon-muted ml-3">arrow_forward</i> -->
+        </div>
+    </div>
+
+    
+</div>
+
+
+<!-- <div class="col-sm-12 col-md-4">
+    <div class="kt-portlet kt-portlet--height-fluid kt-portlet--border-bottom-dark">
+        <div class="kt-portlet__body kt-portlet__body--fluid">
+            <div class="kt-widget26">
+                <div class="kt-widget26__content">
+                    <span class="kt-widget26__number kt-font-danger">{{shipping}}% </span>
+                    <span class="kt-widget26__desc">{{'Delayed Shipping Percentage'|__}}</span>
+                </div>
+                <div class="kt-widget26__chart" style="height:200px; width: 100%;">
+                    <canvas id="kt_chart_quick_stats_3"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div> -->
+<script>
+function quickStats(){
+    _initSparklineChart($('#kt_chart_quick_stats_1'), [{{PendingPaymentsChart}}], KTApp.getStateColor('warning'), 3);
+    _initSparklineChart($('#kt_chart_quick_stats_2'), [{{CurrentMonthSalesChart}}], KTApp.getStateColor('success'), 3);
+    _initSparklineChart($('#kt_chart_quick_stats_3'), [{{shippingChart}}], KTApp.getStateColor('danger'), 3);
+}
+</script>

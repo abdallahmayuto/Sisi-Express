@@ -1,0 +1,91 @@
+[viewBag]
+==
+<?php
+    function onStart(){
+        $data = post();
+        if(isset($data['id'])){
+            $this['notifications']   =   \RainLab\User\Models\User::find($data['id'])->notifications;
+        }else{
+            $this['notifications']   =   $this->user->notifications;
+        }
+    }
+?>
+==
+
+<a href="#notifications_menu" class="nav-link dropdown-toggle" data-toggle="dropdown" data-caret="false">
+    <i class="material-icons nav-icon navbar-notifications-indicator">notifications</i>
+</a>
+<div id="notifications_menu" class="dropdown-menu dropdown-menu-right navbar-notifications-menu">
+    <div class="dropdown-item d-flex align-items-center py-2">
+        <span class="flex navbar-notifications-menu__title m-0">Notifications {{notifications.where('read_at', null).count()}}</span>
+        <a href="javascript:void(0)" class="text-muted"><small>{{'View all notifications'|__}}</small></a>
+    </div>
+    <div class="navbar-notifications-menu__content" data-perfect-scrollbar>
+    
+        <div class="py-2">
+
+            {% if notifications.where('read_at', null).count() > 0 %}
+                {% for notification in notifications.where('read_at', null) %}
+                    <div class="dropdown-item d-flex">
+                        <div class="mr-3">
+                            <div class="avatar avatar-sm" style="width: 32px; height: 32px;">
+                                <i class="{{notification.icon}} kt-font-{{notification.data.badge}}"></i>
+                            </div>
+                        </div>
+                        <div class="flex">
+                            <a href="{{ 'dashboard/notifications'|page({ id: notification.id }) }}">
+                            {% if notification.type == 'new_shipments' %}
+                                    {{theme_lang.new_shipments}}
+                                {% else %}
+                                    {{notification.body|__}}
+                                {% endif %}
+
+                            </a><br>
+                            <small class="text-muted"> {{notification.created_at|date(settings.dateformat)}} {{notification.created_at|date('h:i:s')}}</small>
+                        </div>
+                    </div>
+                    
+                {% endfor %}
+
+            {% else %}
+                    <div class="dropdown-item d-flex">
+                        <div class="flex">
+                            <a href="#">
+                            {{'All caught up!'|__}}
+                            <br>
+                            {{'No new notifications.'|__}}
+                            </a><br>
+                            <small class="text-muted"> {{notification.created_at|date(settings.dateformat)}} {{notification.created_at|date('h:i:s')}}</small>
+                        </div>
+                    </div>
+
+                <div class="kt-grid kt-grid--ver" style="min-height: 200px;">
+                    <div class="kt-grid kt-grid--hor kt-grid__item kt-grid__item--fluid kt-grid__item--middle">
+                        <div class="kt-grid__item kt-grid__item--middle kt-align-center">
+                            {{'All caught up!'|__}}
+                            <br>
+                            {{'No new notifications.'|__}}
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    <a href="javascript:void(0);" class="dropdown-item text-center navbar-notifications-menu__footer">View All</a>
+</div>
+
+
+<script>
+function notificationPanel(){
+    var notificationPanel = KTUtil.get('topbar_notifications_notifications');
+    var panel = KTUtil.get('kt_quick_panel');
+    KTUtil.scrollInit(notificationPanel, {
+        mobileNativeScroll: true,
+        resetHeightOnDestroy: true,
+        handleWindowResize: true,
+        height: function() {
+            return '300';
+        }
+    });
+}
+</script>
